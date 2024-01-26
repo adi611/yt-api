@@ -1,6 +1,6 @@
 # import modules
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import sqlite3
 import threading
 from dotenv import load_dotenv
@@ -47,7 +47,6 @@ def insert_video_data(video_data):
 
 
 def fetch_videos_from_youtube():
-    print('in fetch_videos_from_youtube...')
     api_key_index = 0
     valid = False
     last_request_time = datetime.utcnow()
@@ -66,15 +65,12 @@ def fetch_videos_from_youtube():
                 ),
             )
             res = req.execute()
-            print(res)
             valid = True
         except HttpError as err:
-            print(err)
             code = err.resp.status
             if not (code == 400 or code == 403):
                 break
             else:
-                print('api_key_index updated...')
                 api_key_index += 1
 
     if valid:
@@ -92,7 +88,6 @@ def fetch_videos_from_youtube():
 
 # Scheduler utility function
 def schedule_fetch_and_store_videos():
-    print("in schedule_fetch_and_store_videos...")
     threading.Timer(INTERVAL, schedule_fetch_and_store_videos).start()
     fetch_videos_from_youtube()
 
@@ -102,14 +97,32 @@ def schedule_fetch_and_store_videos():
 def get_videos():
     page = int(request.args.get("page", 1))
     per_page = int(request.args.get("per_page", 10))
+    sort = request.args.get("sort", "published_at")
+    filter_keyword = request.args.get("filter", "")
+
+    allowed_sort_fields = ["published_at", "title", "description"]
+
+    if sort not in allowed_sort_fields:
+        return jsonify({"error": "Invalid sort field"}), 400
+
     offset = (page - 1) * per_page
     limit = per_page
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute(
-        f"SELECT * FROM {TABLE_NAME} ORDER BY published_at DESC LIMIT ? OFFSET ?",
-        (limit, offset),
-    )
+
+    if filter_keyword:
+        # If filter keyword is provided, add WHERE condition
+        cursor.execute(
+            f"SELECT * FROM {TABLE_NAME} WHERE title LIKE ? OR description LIKE ? "
+            f"ORDER BY {sort} DESC LIMIT ? OFFSET ?",
+            (f"%{filter_keyword}%", f"%{filter_keyword}%", limit, offset),
+        )
+    else:
+        cursor.execute(
+            f"SELECT * FROM {TABLE_NAME} ORDER BY {sort} DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        )
+
     rows = cursor.fetchall()
     conn.close()
     video_data = [
@@ -121,7 +134,13 @@ def get_videos():
         )
         for row in rows
     ]
-    return jsonify(video_data)
+    return jsonify({"videos": video_data})
+
+
+# Dashboard route
+@app.route("/dashboard")
+def dashboard():
+    return render_template("dashboard.html")
 
 
 # Initialize database and start scheduler
