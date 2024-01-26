@@ -48,10 +48,10 @@ def insert_video_data(video_data):
 
 def fetch_videos_from_youtube():
     api_key_index = 0
-    valid = False
+    is_api_key_valid = False
     last_request_time = datetime.utcnow()
 
-    while not valid and api_key_index < len(YOUTUBE_API_KEYS):
+    while not is_api_key_valid and api_key_index < len(YOUTUBE_API_KEYS):
         try:
             api_key = YOUTUBE_API_KEYS[api_key_index]
             youtube = build("youtube", "v3", developerKey=api_key)
@@ -65,7 +65,7 @@ def fetch_videos_from_youtube():
                 ),
             )
             res = req.execute()
-            valid = True
+            is_api_key_valid = True
         except HttpError as err:
             code = err.resp.status
             if not (code == 400 or code == 403):
@@ -73,7 +73,7 @@ def fetch_videos_from_youtube():
             else:
                 api_key_index += 1
 
-    if valid:
+    if is_api_key_valid:
         # Process the response and store in the database
         for item in res["items"]:
             video_id = item["id"]["videoId"]
